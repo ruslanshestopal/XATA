@@ -1,0 +1,2 @@
+# XATA
+This is my home automation project
