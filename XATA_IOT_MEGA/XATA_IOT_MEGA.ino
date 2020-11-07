@@ -11,6 +11,7 @@ int count = 0;
 void setup() {
   // Инициализация портов и выходов
   Serial.begin(115200);
+  Serial1.begin(115200);
   Serial3.begin(115200);
 
 
@@ -28,7 +29,7 @@ void takeReading(){
   Serial3.print("{\"t0\":");
   Serial3.print(count);
   Serial3.println(",\"t1\":0,\"t2\":0,\"t3\":0,\"t4\":0,\"t5\":0,\"h0\":0,\"h1\":0,\"h2\":0,\"d\":0}");
-
+  Serial3.print("end");
 }
 // Проверка события на порту Serial3
 void serialEvent3() {
