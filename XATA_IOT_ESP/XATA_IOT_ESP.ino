@@ -26,7 +26,7 @@ int st = 1;
 
 void setup() {
 
-  USE_SERIAL.begin(9600);
+  USE_SERIAL.begin(115200);
   USE_SERIAL.setDebugOutput(true);
 
 
@@ -56,7 +56,7 @@ void setup() {
   } );
 
   server.on("/", []() {
-    server.send(200, "text/html", "<html><head><script>var connection = new WebSocket('ws://192.168.0.11:8081/', ['arduino']);connection.onopen = function () {  connection.send('Connect ' + new Date()); }; connection.onerror = function (error) {    console.log('WebSocket Error ', error);};connection.onmessage = function (e) {  console.log('Server: ', e.data);};function sendRGB() {  var r = parseInt(document.getElementById('r').value).toString(16);  var g = parseInt(document.getElementById('g').value).toString(16);  var b = parseInt(document.getElementById('b').value).toString(16);  if(r.length < 2) { r = '0' + r; }   if(g.length < 2) { g = '0' + g; }   if(b.length < 2) { b = '0' + b; }   var rgb = '#'+r+g+b;    console.log('RGB: ' + rgb); connection.send(rgb); }</script></head><body>LED Control:<br/><br/>R: <input id=\"r\" type=\"range\" min=\"0\" max=\"255\" step=\"1\" oninput=\"sendRGB();\" /><br/>G: <input id=\"g\" type=\"range\" min=\"0\" max=\"255\" step=\"1\" oninput=\"sendRGB();\" /><br/>B: <input id=\"b\" type=\"range\" min=\"0\" max=\"255\" step=\"1\" oninput=\"sendRGB();\" /><br/></body></html>");
+    server.send(200, "text/html", "<html><head><script>var connection = new WebSocket('ws://192.168.0.11:8081/', ['ESP8266_INDEX']);connection.onopen = function () {  connection.send('Connect ' + new Date()); }; connection.onerror = function (error) {    console.log('WebSocket Error ', error);};connection.onmessage = function (e) {  console.log('Server: ', e.data);};function sendRGB() {  var r = parseInt(document.getElementById('r').value).toString(16);  var g = parseInt(document.getElementById('g').value).toString(16);  var b = parseInt(document.getElementById('b').value).toString(16);  if(r.length < 2) { r = '0' + r; }   if(g.length < 2) { g = '0' + g; }   if(b.length < 2) { b = '0' + b; }   var rgb = '#'+r+g+b;    console.log('RGB: ' + rgb); connection.send(rgb); }</script></head><body>LED Control:<br/><br/>R: <input id=\"r\" type=\"range\" min=\"0\" max=\"255\" step=\"1\" oninput=\"sendRGB();\" /><br/>G: <input id=\"g\" type=\"range\" min=\"0\" max=\"255\" step=\"1\" oninput=\"sendRGB();\" /><br/>B: <input id=\"b\" type=\"range\" min=\"0\" max=\"255\" step=\"1\" oninput=\"sendRGB();\" /><br/></body></html>");
   });
 
   server.on("/all", HTTP_GET, []() {
@@ -105,7 +105,7 @@ void setup() {
   ArduinoOTA.begin();
 
   // server address, port and URL
-  webSocket.begin("192.168.0.11", 8081, "/");
+  webSocket.begin("192.168.0.11", 8081, "/", "ESP8266");
 
   // event handler
   webSocket.onEvent(webSocketEvent);
@@ -159,12 +159,10 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
         break;
       }
     case WStype_TEXT:
-      USE_SERIAL.printf("[WSc] get text: %s\n", payload);
-      char str[400];
-      sprintf(str, "%s", payload);
-      Serial.println(str);
-      // send message to server
-      //webSocket.sendTXT("I, client, received messsge and send this back to server");
+      USE_SERIAL.printf("%s\n", payload);
+      //char str[500];
+      //sprintf(str, "%s", payload);
+      //Serial.println(str);
       break;
     case WStype_BIN:
       USE_SERIAL.printf("[WSc] get binary length: %u\n", length);
