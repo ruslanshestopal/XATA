@@ -1,384 +1,248 @@
-#include "Wire.h"
-#include <Nextion.h>
-#include "DHT.h"
-#include "SoftwareSerial.h"
-#include "DFRobotDFPlayerMini.h"
+#include <Wire.h>
+#include <CircularBuffer.h>
 #include <ArduinoJson.h>
-#include <NexVariable.h>
-#include <OneWire.h>
-#include <DallasTemperature.h>
-#include <PZEM004T.h>
-#include "Adafruit_SHT31.h"
+#include <WebSocketsClient.h>
 #include <HTU21D.h>
+//#include "ds3231.h" //https://github.com/rodan/ds3231
+#include "DFRobotDFPlayerMini.h"
+#include<DigitalIO.h>
+#include "SPI.h"      
+#include "nRF24L01.h" 
+#include "RF24.h"     
 
-#define DHTPIN 25     // what digital pin we're connected to
-#define DHTTYPE DHT22   // DHT 22  (AM2302), AM2321
-//#define DHTTYPE DHT21   // DHT 21 (AM2301)
-
-DHT dht(DHTPIN, DHTTYPE);
-DHT dht2(22, DHT21);
-
-#define ONE_WIRE_BUS 23
-OneWire oneWire(ONE_WIRE_BUS);
-DallasTemperature sensors(&oneWire);
-
-#define ONE_WIRE_BUS2 22
-OneWire oneWire2(ONE_WIRE_BUS2);
-DallasTemperature sensors2(&oneWire2);
+#define DS3231_I2C_ADDRESS 0x68
 
 
+byte mac[] = { 0xDE, 0xAD, 0xBE, 0xFF, 0xBE, 0xED };
+IPAddress ip(192, 168, 0, 193);
+WebSocketsClient webSocket;
+
+DFRobotDFPlayerMini mp3;
 
 
-PZEM004T* pzem;
-IPAddress ip(192, 168, 1, 1);
+SoftSPI<SOFT_SPI_MISO_PIN, SOFT_SPI_MOSI_PIN, SOFT_SPI_SCK_PIN, SPI_MODE> spi;
+RF24 radio(9, 8);
 
-Adafruit_SHT31 sht31 = Adafruit_SHT31();
+const char nx_0[] PROGMEM = "t32"; // вент1
+const char nx_1[] PROGMEM = "t33";// вент2
+const char nx_2[] PROGMEM = "t34";// вент3
+const char nx_3[] PROGMEM = "t35";// вент4
+const char nx_4[] PROGMEM = "t24";// зал2
+const char nx_5[] PROGMEM = "t25";// ванна
+const char nx_6[] PROGMEM = "t18";// потолок
+const char nx_7[] PROGMEM = "vDC";// аккумулятор
+// weather forecast
+const char nx_8[] PROGMEM = "fi";
+const char nx_9[] PROGMEM = "sr";
+const char nx_10[] PROGMEM = "ss";
+const char nx_11[] PROGMEM = "mr";
+const char nx_12[] PROGMEM = "ms";
+const char nx_13[] PROGMEM = "uv";
+const char nx_14[] PROGMEM = "ws";
+const char nx_15[] PROGMEM = "wd";
+const char nx_16[] PROGMEM = "tl";
+const char nx_17[] PROGMEM = "th";
+const char nx_18[] PROGMEM = "tc";
+const char nx_19[] PROGMEM = "ico";
+// date and time
+const char nx_20[] PROGMEM = "page0.mHH";
+const char nx_21[] PROGMEM = "page0.mMM";
+const char nx_22[] PROGMEM = "dt";
+const char nx_31[] PROGMEM = "week_day";
+//Nextion variables tails
+const char nx_23[] PROGMEM = ".txt=\"";
+const char nx_24[] PROGMEM = ".pic=";
+const char nx_25[] PROGMEM = ".val=";
+//
+const char nx_26[] PROGMEM = "t19"; // equipment temperature
+// power meter
+const char nx_27[] PROGMEM = "v"; // voltage
+const char nx_28[] PROGMEM = "p"; // power
+const char nx_29[] PROGMEM = "e"; // energy
+const char nx_30[] PROGMEM = "ed"; // energy today
+const char nx_44[] PROGMEM = "TA"; // total current
+const char nx_45[] PROGMEM = "TP"; // total power
+// temperature and humidity (part 2)
+const char nx_32[] PROGMEM = "t1"; // indoor temperature
+const char nx_33[] PROGMEM = "t2"; // outtdoor temperature
+const char nx_34[] PROGMEM = "t16"; // outdoor humidity
+const char nx_35[] PROGMEM = "t17"; // intdoor humidity
+const char nx_36[] PROGMEM = "t20"; // balcony temperature
+const char nx_37[] PROGMEM = "hv"; // sensor heater
+const char nx_41[] PROGMEM = "bh"; // balcony humidity
+//Nextion global defaults
+const char nx_38[] PROGMEM = "vent_mask";
+const char nx_39[] PROGMEM = "heat_mask";
+const char nx_40[] PROGMEM = "alarm_mask";
+// UPS
+const char nx_42[] PROGMEM = "rT";
+const char nx_43[] PROGMEM = "bP";
+//BMR280
+const char nx_46[] PROGMEM = "hpa";
+const char nx_47[] PROGMEM = "mmr";
+const char nx_48[] PROGMEM = "bhu";
+const char nx_49[] PROGMEM = "bte";
+//MHA-Z14A co2 meter
+const char nx_50[] PROGMEM = "ppm";
+
+
+const char* const vars_table[] PROGMEM = {
+  nx_0, nx_1, nx_2, nx_3, nx_4, nx_5,
+  nx_6, nx_7, nx_8, nx_9, nx_10,
+  nx_11,  nx_12, nx_13, nx_14, nx_15,
+  nx_16, nx_17,  nx_18, nx_19, nx_20,
+  nx_21, nx_22, nx_23,  nx_24, nx_25,
+  nx_26, nx_27, nx_28, nx_29, nx_30,
+  nx_31, nx_32, nx_33, nx_34, nx_35,
+  nx_36, nx_37, nx_38, nx_39, nx_40,
+  nx_41, nx_42, nx_43,  nx_44, nx_45,
+  nx_46, nx_47, nx_48,  nx_49, nx_50,
+};
+
+const char topStr[] PROGMEM = "%i.%01i%c";
+const char topHStr[] PROGMEM = "%i%c";
+const char dateStr[] PROGMEM = "%02d-%02d-%d";
+
+struct TX_DATA {
+  uint8_t c;
+  uint8_t s;
+  uint8_t r;
+};
+struct RX1_DATA {
+  uint16_t v;
+  uint16_t i;
+  uint16_t p;
+
+  uint8_t h0;
+  uint8_t h1;
+  uint8_t h2;
+
+  int16_t t0;
+  int16_t t1;
+  int16_t t2;
+
+};
+
+struct RX2_DATA {
+  int16_t t0;
+  int16_t t1;
+  int16_t t2;
+  int16_t t3;
+  int16_t t4;
+  int16_t t5;
+  int16_t t6;
+  int16_t t7;
+  uint8_t h0;
+  int16_t hp;
+  int16_t p;
+  int32_t e;
+};
+
+struct RX3_DATA {
+  uint8_t c;
+  uint8_t s;
+  uint16_t r;
+};
+
+TX_DATA tx_data;
+RX1_DATA rx1_data;
+RX2_DATA rx2_data;
+RX3_DATA rx3_data;
+
+//define slave i2c address
+#define I2C_SLAVE_ADDRESS 9
+
+unsigned long prev, interval = 5000;
+uint32_t estart = 22168227; //133 579 77 22.01.2022 21:15 22534
+
+uint32_t eday = 0;
+
+uint8_t current_hh = 0;
+uint8_t current_mm = 0;
+uint8_t current_weekday = 0;
+// Nextion vars
+/*
+   'vent_mask' variable works as a bitset
+   bits 0—23 represents hours from 0 to 23. Read value bitRead(vent_mask, n-hour)
+   bits 24—25 (2 bits) fan speed posible valuses are 0,1,2,3 (as on actual knobe). Read value ((1 << 2) - 1) & (vent_mask >> 24)
+   bit 26 if set indicates that system is running in auto shceduler mode or manual mode if not set.
+   bits 27—29 (3 bits) duration to run, posible valuses 1,2,3,4,5,6 *10 = minutes to run. Read value ((1 << 3) - 1) & (vent_mask >> 27)
+*/
+uint32_t vent_mask = 0;
+uint32_t heat_mask = 0;
+uint32_t alarm_mask = 0;
+
+uint8_t currentPage = 0;
+
+struct ts {
+  uint8_t sec;         /* seconds */
+  uint8_t min;         /* minutes */
+  uint8_t hour;        /* hours */
+  uint8_t mday;        /* day of the month */
+  uint8_t mon;         /* month */
+  int16_t year;        /* year */
+  uint8_t wday;        /* day of the week */
+  uint8_t yday;        /* day in the year */
+  uint8_t isdst;       /* daylight saving time */
+  uint8_t year_s;      /* year in short notation*/
+};
+
+ts t;
+
+
+
+
+int speedArr[4] = {0, 40, 60, 100};
 
 HTU21D myHTU21D(HTU21D_RES_RH11_TEMP11);
 
-
-#include "ds3231.h" //https://github.com/rodan/ds3231
-#define DS3231_I2C_ADDRESS 0x68
-
-unsigned long prev, interval = 5000;
-const char double_str[] PROGMEM = "%02d";
-const char watt_str[] PROGMEM = "%04dW";
-const char double_time_str[] PROGMEM = "%02d:%02d";
-const char double_date_str[] PROGMEM = "%02d-%02d-%d";
-const char topStr[] PROGMEM = "%i.%01i%c";
-const char topHStr[] PROGMEM = "%i%c";
-
-const unsigned long estart = 1766120; //37950
-unsigned long eday = 0;
-
-SoftwareSerial mySoftwareSerial(10, 11); // RX, TX
-DFRobotDFPlayerMini myDFPlayer;
-
-int currentMinute = 0;
-int currentHour = 0;
-int currentDay = 0;
-
-int currentPage = 0;
-
-int alarmHour = 7;
-int alarmMinute = 0;
-int alarmMask = 0; // 62  0 1 1 1 1 1 0
-
-uint32_t red = 255;
-uint32_t green = 255;
-uint32_t blue = 255;
-uint32_t white = 255;
-
-uint32_t aON = 0;
-uint32_t bON = 0;
-
-static byte byte1;  // Last byte buffer
-static byte byte2;  // Second last byte bufferstatic byte byte1;
-
-#define BUFF_MAX 128
-
-// пол
-static byte ta0[8] = {0x28, 0xFF, 0x26, 0x71, 0xC2, 0x16, 0x03, 0xB3}; // ванна
-static byte ta1[8] = {0x28, 0xFF, 0x66, 0x20, 0xC4, 0x16, 0x04, 0x5F};// 1
-static byte ta2[8] = {0x28, 0xFF, 0x61, 0x2B, 0xC2, 0x16, 0x03, 0xC8}; // 2
-static byte ta3[8] = {0x28, 0xFF, 0xB7, 0x28, 0xC2, 0x16, 0x03, 0x82}; // зал 2
-// по дому
-static byte ta4[8] = {0x28, 0xFF, 0x7A, 0x6C, 0x23, 0x16, 0x04, 0x4D};//- розетка
-static byte ta5[8] = {0x28, 0xFF, 0x5D, 0x90, 0x23, 0x16, 0x04, 0x87};//-потолок
-static byte ta6[8] = {0x28, 0xFF, 0x88, 0x8D, 0x23, 0x16, 0x04, 0xAE};// на дворе
-static byte ta7[8] = {0x28, 0xFF, 0x1A, 0x8E, 0x23, 0x16, 0x04, 0x12};//- в коробке
-
-/* 27
-  0x28, 0xFF, 0x88, 0x8D, 0x23, 0x16, 0x04, 0xAE  },   // CRC OK
-  0x28, 0xFF, 0x5D, 0x90, 0x23, 0x16, 0x04, 0x87  },    // CRC OK
-  };
-  pin29
-  0x28, 0xFF, 0x7A, 0x6C, 0x23, 0x16, 0x04, 0x4D  },    // CRC OK
-  0x28, 0xFF, 0x66, 0x20, 0xC4, 0x16, 0x04, 0x5F  },    // CRC OK
-  0x28, 0xFF, 0x61, 0x2B, 0xC2, 0x16, 0x03, 0xC8  },    // CRC OK
-
-
-*/
-
-NexText aHour = NexText(1, 1, "t0");
-NexText aMin = NexText(1, 2, "t1");
-
-NexVariable hh = NexVariable(0, 12, "hh");
-NexVariable mm = NexVariable(0, 13, "mm");
-NexVariable tmp = NexVariable(0, 16, "tmp");
-NexVariable hum = NexVariable(0, 17, "hum");
-NexVariable ss = NexVariable(0, 18, "ss");
-NexVariable sr = NexVariable(0, 19, "sr");
-NexVariable ms = NexVariable(0, 20, "ms");
-NexVariable mr = NexVariable(0, 21, "mr");
-NexVariable wd = NexVariable(0, 22, "wd");
-NexVariable ws = NexVariable(0, 23, "ws");
-NexVariable ico = NexVariable(0, 24, "ico");
-NexVariable ltxt = NexVariable(0, 25, "ltxt");
-NexVariable amsk = NexVariable(0, 28, "amsk");
-NexVariable alrm = NexVariable(0, 29, "alrm");
-NexVariable uv = NexVariable(0, 30, "uv");
-NexVariable date = NexVariable(0, 36, "date");
-NexVariable ctmp = NexVariable(0, 37, "ctmp");
-
-NexVariable tmp0 = NexVariable(0, 47, "tp0");
-NexVariable tmp1 = NexVariable(0, 48, "tp1");
-NexVariable tmp2 = NexVariable(0, 49, "tp2");
-NexVariable tmp3 = NexVariable(0, 50, "tp3");
-//
-NexVariable tmpd = NexVariable(0, 51, "td");
-NexVariable hmdd = NexVariable(0, 52, "hd");
-//
-NexVariable tmp4 = NexVariable(0, 53, "tmp0");
-NexVariable tmp5 = NexVariable(0, 54, "tmp1");
-NexVariable tmp6 = NexVariable(0, 55, "tmp2");
-//электощетчик
-NexVariable kwc = NexVariable(0, 56, "watt");
-NexVariable pwr = NexVariable(0, 57, "cpw");
-NexVariable volt = NexVariable(0, 59, "volt");
-NexVariable twatt = NexVariable(0, 68, "twatt");
-
-
-NexVariable tmplo = NexVariable(0, 65, "tmplo");
-NexVariable tmpcu = NexVariable(0, 66, "tmpcu");
-NexVariable tmphi = NexVariable(0, 67, "tmphi");
-
-
-NexCheckbox c0 = NexCheckbox(1, 3, "c0");
-NexCheckbox c1 = NexCheckbox(1, 4, "c1");
-NexCheckbox c2 = NexCheckbox(1, 5, "c2");
-NexCheckbox c3 = NexCheckbox(1, 6, "c3");
-NexCheckbox c4 = NexCheckbox(1, 7, "c4");
-NexCheckbox c5 = NexCheckbox(1, 8, "c5");
-NexCheckbox c6 = NexCheckbox(1, 9, "c6");
-
-NexButton hoursUp = NexButton(1, 10, "b0");
-NexButton hoursDown = NexButton(1, 12, "b2");
-NexButton minUp = NexButton(1, 11, "b1");
-NexButton minDown = NexButton(1, 13, "b3");
-
-NexPage page0 = NexPage(0, 0, "page0");
-NexPage page1 = NexPage(1, 0, "page1");
-NexPage page2 = NexPage(2, 0, "page2");
-NexPage page3 = NexPage(3, 0, "page3");
-
-NexSlider Rslider = NexSlider(3, 4, "h0");
-NexSlider Gslider = NexSlider(3, 5, "h1");
-NexSlider Bslider = NexSlider(3, 6, "h2");
-NexSlider Wslider = NexSlider(3, 7, "h3");
-
-NexDSButton b0 = NexDSButton(3, 1, "bt0");
-NexDSButton b1 = NexDSButton(3, 2, "bt1");
-
-NexTouch *nex_listen_list[] = {
-
-  &c0, &c1, &c2, &c3, &c4, &c5, &c6,
-  &hoursUp, &hoursDown, &minUp, &minDown,
-  &page0,
-  &page1,
-  &page2,
-  &page3,
-  &Rslider, &Gslider, &Bslider, &Wslider,
-  &b0, &b1,
-  NULL
+class Record {
+  public:
+    Record(const char *var_name);
+    ~Record();
+    void print();
+    const char *cmd_name;
 };
-
-
-void checkMonday(void *ptr)  {
-  uint32_t val = 0;
-  c0.getValue(&val);
-  bitWrite(alarmMask, 1, val);
+Record::Record(const char *var_name ) {
+  cmd_name = (char*) malloc( strlen(var_name) * sizeof(char) + 1 );
+  strcpy( cmd_name, var_name);
+}
+Record::~Record(void) {
+  free(cmd_name);
+}
+void Record::print() {
+  Serial2.write(cmd_name);
+  Serial2.print("\xFF\xFF\xFF");
 
 }
-void checkTuesday(void *ptr)  {
-  uint32_t val = 0;
-  c1.getValue(&val);
-  bitWrite(alarmMask, 2, val);
-}
-void checkWednesday(void *ptr)  {
-  uint32_t val = 0;
-  c2.getValue(&val);
-  bitWrite(alarmMask, 3, val);
-}
-void checkThursday(void *ptr)  {
-  uint32_t val = 0;
-  c3.getValue(&val);
-  bitWrite(alarmMask, 4, val);
-}
-void checkFriday(void *ptr)  {
-  uint32_t val = 0;
-  c4.getValue(&val);
-  bitWrite(alarmMask, 5, val);
-}
-void checkSaturday(void *ptr)  {
-  uint32_t val = 0;
-  c5.getValue(&val);
-  bitWrite(alarmMask, 6, val);
-}
-void checkSunday(void *ptr)  {
-  uint32_t val = 0;
-  c6.getValue(&val);
-  bitWrite(alarmMask, 0, val);
-}
-void hoursUpCallback(void *ptr)  {
-  alarmHour++;
-  if (alarmHour >= 24) {
-    alarmHour = 0;
-  }
-  updateAlarm();
-}
-void hoursDownCallback(void *ptr)  {
-  alarmHour--;
-  if (alarmHour < 0) {
-    alarmHour = 23;
-  }
-  updateAlarm();
-}
-void minUpCallback(void *ptr)  {
-  alarmMinute += 5;
-  if (alarmMinute >= 60) {
-    alarmMinute = 0;
-  }
-  updateAlarm();
-}
-void minDownCallback(void *ptr)  {
-  alarmMinute -= 1;
-  if (alarmMinute < 0) {
-    alarmMinute = 59;
-  }
-  updateAlarm();
-}
-void updateAlarm()  {
-  char buf[5];
-  sprintf_P(buf, double_str, alarmHour);
-  aHour.setText(buf);
-  sprintf_P(buf, double_str, alarmMinute);
-  aMin.setText(buf);
-  set_alarm();
-}
-// Page change event:
-void page0PushCallback(void *ptr) {
+///
+CircularBuffer<Record*, 50> tx_buffer;
+CircularBuffer<Record*, 12> forecast_tx_buffer;
 
-  currentPage = 0;
-  myDFPlayer.disableLoop(); //disable loop
-
-  char buf[10];
-  sprintf_P(buf, double_time_str, alarmHour, alarmMinute );
-  alrm.setText(buf);
-  int val = bitRead(alarmMask, currentDay);
-  amsk.setValue(val);
-
-
-  sprintf_P(buf, double_str, currentHour);
-  hh.setText(buf);
-
-  sprintf_P(buf, double_str, currentMinute);
-  mm.setText(buf);
-}
-// Page change event:
-void page1PushCallback(void *ptr) {
-
-  currentPage = 1;
-
-  c0.setValue(bitRead(alarmMask, 1));
-  c1.setValue(bitRead(alarmMask, 2));
-  c2.setValue(bitRead(alarmMask, 3));
-  c3.setValue(bitRead(alarmMask, 4));
-  c4.setValue(bitRead(alarmMask, 5));
-  c5.setValue(bitRead(alarmMask, 6));
-  c6.setValue(bitRead(alarmMask, 0));
-
-  updateAlarm();
-
-}  // End of press event
-// Page change event:
-void page2PushCallback(void *ptr)  {
-  Serial.println("page2PushCallback");
-}
-// End of press event
-void page3PushCallback(void *ptr)  {
-
-  currentPage = 3;
-  Rslider.setValue(red);
-  Gslider.setValue(green);
-  Bslider.setValue(blue);
-  Wslider.setValue(white);
-
-  b0.setValue(aON);
-  b1.setValue(bON);
-
-}  // End of press event
-void switchACallback(void *ptr) {
-
-  b0.getValue(&aON);
-
-  if (aON == 1) {
-    Serial.println("ON");
-    analogWrite(7, red);
-    analogWrite(6, green);
-    analogWrite(5, blue);
-
-  } else {
-    Serial.println("OFF");
-    analogWrite(7, 0);
-    analogWrite(6, 0);
-    analogWrite(5, 0);
-  }
-}
-void switchBCallback(void *ptr) {
-
-  b1.getValue(&bON);
-
-  if (bON == 1) {
-    analogWrite(4, white);
-  } else {
-    Serial.println("OFF");
-    analogWrite(4, 0);
-  }
-}
-void set_alarm(void) {
-
-  // flags define what calendar component to be checked against the current time in order
-  // to trigger the alarm - see datasheet
-  // A1M1 (seconds) (0 to enable, 1 to disable)
-  // A1M2 (minutes) (0 to enable, 1 to disable)
-  // A1M3 (hour)    (0 to enable, 1 to disable)
-  // A1M4 (day)     (0 to enable, 1 to disable)
-  // DY/DT          (dayofweek == 1/dayofmonth == 0)
-  uint8_t flags[5] = { 0, 0, 0, 1, 1 };
-
-  // set Alarm1
-  DS3231_set_a1(0, alarmMinute, alarmHour, 0, flags);
-
-  // activate Alarm1
-  DS3231_set_creg(DS3231_INTCN | DS3231_A1IE);
-}
+#define details(name) (byte*)&name,sizeof(name)
 
 void setup() {
-  mySoftwareSerial.begin(9600);
+
   Serial.begin(9600);
   Serial1.begin(9600);
-  Serial2.begin(9600);
-  Serial3.begin(115200);
+  Serial2.begin(115200);
 
-  pinMode(4, OUTPUT);   // sets the pins as output
-  pinMode(5, OUTPUT);
-  pinMode(6, OUTPUT);
-  pinMode(7, OUTPUT);
+  Serial.println(F("Master setup"));
 
-  sensors.begin(); // Start up the library for the Temperature Sensors
-  sensors.setResolution(10);
-  //sensors.setWaitForConversion(false);
 
-  sensors2.begin();
-  sensors2.setResolution(10);
-  // sensors2.setWaitForConversion(false);
+  // start the Ethernet connection:
 
-  nexInit();
+  if (Ethernet.begin(mac) == 0) {
+    Serial.println(F("Failed to configure Ethernet using DHCP"));
+    Ethernet.begin(mac, ip);
+  }
+
+  webSocket.begin("192.168.0.11", 8081, "/");
+  webSocket.onEvent(webSocketEvent);
 
 
 
-  if (!myDFPlayer.begin(mySoftwareSerial)) {
+  if (!mp3.begin(Serial1)) {
     Serial.println(F("Unable to begin:"));
     Serial.println(F("1.Please recheck the connection!"));
     Serial.println(F("2.Please insert the SD card!"));
@@ -387,407 +251,628 @@ void setup() {
 
 
   Serial.println(F("DFPlayer Mini online."));
-  myDFPlayer.setTimeOut(500);
-  myDFPlayer.volume(10);  //Set volume value (0~30).
+  mp3.setTimeOut(500);
+  mp3.volume(25);  //Set volume value (0~30).
+
+  //DS3231_init(DS3231_INTCN);
+  //DS3231_clear_a1f();
+  //set_alarm();
 
 
-  //  sht31.begin(0x44);
+  // myHTU21D.setHeater(HTU21D_OFF);
 
-  myHTU21D.begin();
-  //myHTU21D.setHeater(HTU21D_ON);
+  // setupDefaults();
 
-  DS3231_init(DS3231_INTCN);
-  DS3231_clear_a1f();
-  set_alarm();
+  radio.begin();
+  radio.setChannel(100);
 
 
-  c0.attachPop(checkMonday);
-  c1.attachPop(checkTuesday);
-  c2.attachPop(checkWednesday);
-  c3.attachPop(checkThursday);
-  c4.attachPop(checkFriday);
-  c5.attachPop(checkSaturday);
-  c6.attachPop(checkSunday);
+  radio.setDataRate(RF24_250KBPS); //RF24_250KBPS, RF24_1MBPS или RF24_2MBPS
+  radio.setPALevel(RF24_PA_HIGH); // (RF24_PA_MIN=-18dBm, RF24_PA_LOW=-12dBm, RF24_PA_HIGH=-6dBm, RF24_PA_MAX=0dBm).
 
-  hoursUp.attachPush(hoursUpCallback, &hoursUp);
-  hoursDown.attachPush(hoursDownCallback, &hoursDown);
-  minUp.attachPush(minUpCallback, &minUp);
-  minDown.attachPush(minDownCallback, &minDown);
+  radio.openReadingPipe(1, 0xF0F1F2F3F4LL);
+  radio.openReadingPipe(2, 0xF0F1F2F3F5LL);
+  radio.openReadingPipe(3, 0xF0F1F2F3F6LL);
+  radio.openWritingPipe(0xFEDCBA9876LL);
+  radio.startListening();
+}
+void setupDefaults() {
+  //Reset Nextion HMI upon Arduino reload
+  //72 65 73 74
+  char b[4] = {0x72, 0x65, 0x73, 0x74};
+  /*
+    char buf[15];
+    char out_buff[100];
+    sprintf(buf, "%d", 0);
+    MakeNextionCommand(38, 2, buf, out_buff);
+    tx_buffer.push(new Record(out_buff));
+    MakeNextionCommand(39, 2, buf, out_buff);
+    tx_buffer.push(new Record(out_buff));
+    MakeNextionCommand(40, 2, buf, out_buff);
+    tx_buffer.push(new Record(out_buff));
+  */
+  tx_buffer.push(new Record(b));
 
-  Rslider.attachPop(redCallback);
-  Gslider.attachPop(greenCallback);
-  Bslider.attachPop(blueCallback);
-  Wslider.attachPop(whiteCallback);
+  while (!tx_buffer.isEmpty()) {
+    Record* record = tx_buffer.shift();
+    record->print();
+    delete record;
+  }
+  tx_data.c = 0xC1;
+  tx_data.s = 0;
+  tx_data.r = 0;
 
-  Wslider.attachPop(whiteCallback);
-  Wslider.attachPop(whiteCallback);
-
-  b0.attachPop(switchACallback, &b0);
-  b1.attachPop(switchBCallback, &b1);
-
-  page0.attachPush(page0PushCallback);  // Page press event
-  page1.attachPush(page1PushCallback);  // Page press event
-  page2.attachPush(page2PushCallback);  // Page press event
-  page3.attachPush(page3PushCallback);  // Page press event
-
-  while (!Serial1) { }
-  pzem = new PZEM004T(&Serial1);
-  pzem->setAddress(ip);
-
-
-
-  nexSerial.print("dim=10");
-  nexSerial.write(0xFF);
-  nexSerial.write(0xFF);
-  nexSerial.write(0xFF);
+  // TX.sendData(I2C_SLAVE_ADDRESS);
 
 }
+void MakeNextionCommand(uint8_t index, uint8_t type,  char * payload,  char *out_buff) {
 
-void redCallback(void *ptr) {
-  Rslider.getValue(&red);
-  if (aON == 1) {
-    analogWrite(7, red);
+  char buff[strlen(payload) * sizeof(char) + 20 ];
+  out_buff[0] = (char)0;
+  //char * cmd_buff = (char *) malloc (250);
+
+  strcpy_P(buff, (char*)pgm_read_word(&(vars_table[index])));
+
+  strcat(out_buff, buff);
+
+  if (type == 0) {
+    strcpy_P(buff, (char*)pgm_read_word(&(vars_table[23])));
+    strcat(out_buff, buff);
+    strcat(out_buff,  (char*)payload);
+
+  } else if (type == 1) {
+    strcpy_P(buff, (char*)pgm_read_word(&(vars_table[24])));
+    strcat(out_buff, buff);
+    sprintf(buff,  (char*)payload);
+    strcat(out_buff, buff);
+  } else {
+    strcpy_P(buff, (char*)pgm_read_word(&(vars_table[25])));
+    strcat(out_buff, buff);
+    sprintf(buff, (char*)payload);
+    strcat(out_buff, buff);
+  }
+  if (type == 0) {
+    strcpy(buff, "\"");
+    strcat(out_buff, buff);
   }
 }
-void greenCallback(void *ptr) {
-
-  Gslider.getValue(&green);
-  if (aON == 1) {
-    analogWrite(6, green);
-  }
-}
-void blueCallback(void *ptr) {
-
-  Bslider.getValue(&blue);
-  if (aON == 1) {
-    analogWrite(5, blue);
-  }
-}
-void whiteCallback(void *ptr) {
-
-  Wslider.getValue(&white);
-  if (bON == 1) {
-    analogWrite(4, white);
-  }
-}
-
-
 
 void loop() {
 
+  //webSocket.loop();
+  uint8_t pipe;
+
+  if (radio.available(&pipe)) {
+    char buf[120];
+    switch (pipe) {
+      case 1:
+        radio.read(&rx1_data, sizeof(rx1_data));
+        sprintf(buf, ">>RX1: T0=%d T1=%d T2=%d  H0=%d H1=%d H2=%d  | V=%d I=%d P=%d",
+                rx1_data.t0, rx1_data.t1, rx1_data.t2,
+                rx1_data.h0, rx1_data.h1, rx1_data.h2,
+                rx1_data.v, rx1_data.i, rx1_data.p);
+        Serial.println(buf);
+        break;
+      case 2:
+        radio.read(&rx2_data, sizeof(rx2_data));
+        sprintf(buf, ">>RX2: T0=%d T1=%d T2=%d  T3=%d T4=%d T5=%d T6=%d   |  P=%d E=%ld",
+                rx2_data.t0, rx2_data.t1, rx2_data.t2,
+                rx2_data.t3, rx2_data.t4, rx2_data.t5,
+                rx2_data.t6, rx2_data.p, rx2_data.e);
+        Serial.println(buf);
+        break;
+      case 3:
+        radio.read(&rx3_data, sizeof(rx3_data));
+        Serial.println(F("RX3"));
+        sprintf(buf, ">>RX3: CMD=%d S=%d PPM=%d", rx3_data.c, rx3_data.s, rx3_data.r);
+        Serial.println(buf);
+
+        break;
+      default:
+        Serial.println(F("unexpected packet received"));
+        break;
+    }
+
+
+  }
+
   unsigned long now = millis();
 
-  // show time once in a while
-  if ((now - prev > interval) && (Serial3.available() <= 0) ) {
-
-
-    struct ts t;
-    char buf[10];
-
-    int humidity = (myHTU21D.readHumidity() );
-    int temperature = (myHTU21D.readTemperature() * 10);
-
-    int humidity_out = humidity; //(sht31.readHumidity() * 10);
-    int temperature_out = temperature;//(sht31.readTemperature() * 10);
-
-    uint8_t userRegisterData = 0;
-
-    userRegisterData = myHTU21D.read8(HTU21D_USER_REGISTER_READ);
-    // Serial.print(humidity);
-    // Serial.print("  %  ");
-    // Serial.print(temperature);
-    // Serial.print("  C  ");
-    // Serial.println(userRegisterData, HEX);
-
-    if (humidity <= 15 || humidity >= 99) {
-      if (userRegisterData == 0xBB) {
-        Serial.println("HEATER ON");
-        myHTU21D.setHeater(HTU21D_ON);
-
-      }
-      humidity = 100;
-      temperature -= 18;
-
-    } else {
-      if (userRegisterData == 0xBF) {
-        Serial.println("HEATER OFF");
-        myHTU21D.setHeater(HTU21D_OFF);
-      }
-
+  if (now - prev > interval ) {
+    Serial.println("Request data");
+    if (!forecast_tx_buffer.isEmpty()) {
+      // forecast quee is pending
+      sendForecast();
     }
 
-    sensors.requestTemperatures();
-    sensors2.requestTemperatures();
+    tx_data.c = 0xC0;
+    radio.stopListening();
+    radio.write(&tx_data, sizeof(tx_data));
+    radio.startListening();
 
+    makeAndSendToNEXTION();
 
-    int t0 = round( sensors.getTempC(ta0) * 10);
-    int t1 = 0;//round( sensors.getTempC(ta1) * 10);
-    int t2 = 0;//round( sensors.getTempC(ta2) * 10);
-
-    int t3 = round( sensors2.getTempC(ta3) * 10);
-    int t4 = 0;// round( sensors.getTempC(ta4) * 10);
-    int t5 = round( sensors2.getTempC(ta5) * 10);
-    int t6 = 0;//round( sensors2.getTempC(ta6) * 10);
-
-    DS3231_get(&t);
-
-    if (currentHour != t.hour) {
-      currentHour = t.hour;
-      sprintf_P(buf, double_str, t.hour);
-      hh.setText(buf);
-
-      if (currentHour % 2 == 0) {
-        myDFPlayer.playFolder(2, 1);
-      } else {
-        myDFPlayer.playFolder(2, 2);
-      }
-
-    }
-    if (currentDay != t.wday) {
-      eday = 0;
-      currentDay = t.wday;
-      sprintf_P(buf, double_date_str, t.mday, t.mon, t.year);
-      date.setText(buf);
-      int val = bitRead(alarmMask, currentDay);
-      amsk.setValue(val);
-    }
-
-    if (currentMinute != t.min) {
-      currentMinute = t.min;
-      sprintf_P(buf, double_str, t.min);
-      mm.setText(buf);
-    }
-
-    if (currentPage == 0) {
-
-      sprintf_P(buf, topHStr, humidity ,  char(37) );
-      hum.setText(buf);
-
-
-
-      sprintf_P(buf, topStr, temperature / 10, abs(temperature % 10), char(176));
-      tmp.setText(buf);
-
-      sprintf_P(buf, topStr, t0 / 10, abs(t0 % 10), char(176));
-      tmp0.setText(buf);
-
-      sprintf_P(buf, topStr, t1 / 10, abs(t1 % 10), char(176));
-      tmp1.setText(buf);
-
-      sprintf_P(buf, topStr, t2 / 10, abs(t2 % 10), char(176));
-      tmp2.setText(buf);
-
-
-
-      sprintf_P(buf, topStr, t3 / 10, abs(t3 % 10), char(176));
-      tmp3.setText(buf);
-
-
-      sprintf_P(buf, topStr, t4 / 10, abs(t4 % 10), char(176));
-      tmp4.setText(buf);
-
-
-      sprintf_P(buf, topStr, t5 / 10, abs(t5 % 10), char(176));
-      tmp5.setText(buf);
-
-      sprintf_P(buf, topStr, t6 / 10, abs(t6 % 10), char(176));
-      tmp6.setText(buf);
-
-
-      sprintf_P(buf, topStr, temperature_out / 10, abs(temperature_out % 10), char(176));
-      tmpd.setText(buf);
-
-      sprintf_P(buf, topHStr, humidity_out, char(37));
-      hmdd.setText(buf);
-
-
-      char str[140];
-
-      sprintf(str, "{\"cmd\":\"all\", \"h1\":%d,  \"h2\":%d, \"tin\":%d, \"tout\":%d, \"t0\":%d, \"t1\":%d, \"t2\":%d, \"t3\":%d, \"t4\":%d, \"t5\":%d, \"t6\":%d}\n",
-              humidity, humidity_out, temperature, temperature_out, t0, t1, t2, t3, t4, t5, t6);
-      Serial3.print(str);
-
-
-      //  Serial.println(str);
-
-      int v = pzem->voltage(ip);
-      int p = pzem->power(ip);
-      unsigned long e = pzem->energy(ip);
-
-      if (v < 0.0) {
-        v = 0.0;
-      }
-
-      if (p < 0) {
-        p = 0;
-      }
-
-      sprintf(str, "%dV", v );
-      volt.setText(str);
-      if (p >= 0.0) {
-        sprintf(str, "%dW/h", p);
-        pwr.setText(str);
-      }
-
-
-      int kw = (estart + e) / 1000;
-      int kfp = (estart + e) % 1000;
-      int fp = (float)kfp / 10;
-
-      sprintf(str, "%d.%02d kW", kw, fp);
-      twatt.setText(str);
-      if (eday == 0) {
-        eday = e;
-      }
-      unsigned long uw = (e - eday);
-      sprintf(str, "%05luW", uw);
-
-      kwc.setText(str);
-      sprintf(str, "{\"cmd\":\"1\", \"v\":%d, \"p\":%d, \"e\":%lu, \"ed\":%lu}", v, p, (estart + e), uw );
-      //Serial.println(str);
-      Serial3.print(str);
-
-    }
-
-    if (DS3231_triggered_a1()) {
-      DS3231_clear_a1f();
-      int val = bitRead(alarmMask, currentDay);
-      if (val == 1) {
-        page2.show();
-        myDFPlayer.loopFolder(1);
-      }
-
-    }
     prev = now;
+
+
   }
-  // Run Nextion HMI display
-  nexLoop(nex_listen_list);
+  // Serial.println("RX2 check");
+
 }
 
+void collectI2Cdata(uint8_t *rx_data, int rx_size, int i2c_address) {
+
+  byte rx_buffer[rx_size];
+
+  Wire.requestFrom(i2c_address, rx_size, true);
+  if (Wire.available() == rx_size) {
+    for (int i = 0; i < rx_size; i++) {
+      rx_buffer[i] = Wire.read();
+      //Serial.print("0x");
+      //Serial.print(rx_buffer[i], HEX);
+      //Serial.print(",");
+    }
+    memcpy(rx_data, &rx_buffer, rx_size);
+  }
 
 
-void serialEvent3() {
+}
 
-  while (Serial3.available() ) {
+void makeAndSendToNEXTION() {
 
-    String espString = Serial3.readStringUntil('\n');
-    Serial.print("ESP:>");
-    Serial.println(espString);
+  char buf[120];
+  char out_buff[250];
 
-    if (espString.startsWith("{") ) {
+  // DS3231_get(&t);
 
-      DynamicJsonBuffer jsonBuffer(360);
-      JsonObject& root = jsonBuffer.parseObject(espString);
+  if (current_weekday != t.wday) {
+    eday = 0;
+    current_weekday = t.wday;
+  }
+  if (current_mm != t.min) {
+    current_mm = t.min;
+  }
 
-      if (root != JsonObject::invalid()) {
-        String cmd = root["cmd"].as<String>();
-        if (cmd == "0") {
-          Serial.println("SET WEATHER");
-          int i = root["i"]; // 2
-          const char* lf = root["fi"]; // ""У неділю ввечері: Сніг та крига до покрив завтовшки до 1 см"
-          const char* sunrise = root["sr"]; // "07:40"
-          const char* sunset = root["ss"]; // "16:38"
-          const char* moonrise = root["mr"]; // "11:31"
-          const char* moonset = root["ms"]; // "01:50"
-          const char* td = root["td"];
-          const char* wdir = root["wd"]; // "Пд"
-          const char* wspeed = root["ws"]; // 13
-          const char* uval = root["uv"]; // "0"
-          const char* tl = root["tl"]; // "0"
-          const char* tc = root["tc"]; // "0"
-          const char* th = root["th"]; // "0"
+  sprintf(buf, "%d", t.mday);
+  MakeNextionCommand(22, 0, buf, out_buff);
+  tx_buffer.push(new Record(out_buff));
 
-          utf8ToByte_CStr(lf);
-          utf8ToByte_CStr(wdir);
+  sprintf(buf, "%d", t.min);
+  MakeNextionCommand(21, 2, buf, out_buff);
+  tx_buffer.push(new Record(out_buff));
 
-          sr.setText(sunrise);
-          ss.setText(sunset);
-          mr.setText(moonrise);
-          ms.setText(moonset);
-          wd.setText(wdir);
-          uv.setText(uval);
-          ctmp.setText(td);
 
-          ws.setText(wspeed);
-          ltxt.setText(lf);
-          ico.setValue(i);
-          //
-          char buf[10];
-          sprintf(buf, "%s%c", tl, char(176));
-          tmplo.setText(buf);
-          sprintf(buf, "%s%c", tc, char(176));
-          tmpcu.setText(buf);
-          sprintf(buf, "%s%c", th, char(176));
-          tmphi.setText(buf);
+  sprintf(buf, "%d", t.hour);
+  MakeNextionCommand(20, 2, buf, out_buff);
+  tx_buffer.push( new Record(out_buff));
 
-          myDFPlayer.playFolder(2, 5);
+  int temperature = 0;
+  int humidity = 0;
 
-        } else if (cmd == "set_rgb") {
-          red =  root["r"];
-          green =  root["g"];
-          blue =  root["b"];
 
-          if (aON == 1) {
-            analogWrite(7, red);
-            analogWrite(6, green);
-            analogWrite(5, blue);
-          }
 
-        } else if (cmd == "rgb_on") {
-          aON = 1;
-          analogWrite(7, red);
-          analogWrite(6, green);
-          analogWrite(5, blue);
-        } else if (cmd == "rgb_off") {
-          aON = 0;
-          analogWrite(7, 0);
-          analogWrite(6, 0);
-          analogWrite(5, 0);
-        } else if (cmd == "cw_on") {
-          bON = 1;
-          analogWrite(4, white);
-        } else if (cmd == "cw_off") {
-          bON = 0;
-          analogWrite(4, 0);
-        } else if (cmd == "ww_on") {
-          bON = 1;
-          analogWrite(4, white);
-        } else if (cmd == "ww_off") {
-          bON = 0;
-          analogWrite(4, 0);
-        } else if (cmd == "ww_set") {
-          white =  root["v"];
-          if (bON == 1) {
-            analogWrite(4, white);
-          }
-        } else if (cmd == "cw_set") {
-          white =  root["v"];
-          if (bON == 1) {
-            analogWrite(4, white);
-          }
-        } else if (cmd == "time") {
-          const char* now = root["t"];
-          struct ts t;
-          t.sec = inp2toi(now, 1);
-          t.min = inp2toi(now, 3);
-          t.hour = inp2toi(now, 5);
-          t.wday = now[7] - 48;
-          t.mday = inp2toi(now, 8);
-          t.mon = inp2toi(now, 10);
-          t.year = inp2toi(now, 12) * 100 + inp2toi(now, 14);
-          DS3231_set(t);
-        }
-      } else {
-        Serial.println(F("INVALID JSON!"));
-      }
+  int te = 22;//DS3231_get_treg() * 10; // аппаратура
+  sprintf_P(buf, topStr, te / 10, abs(te % 10), char(176));
+  MakeNextionCommand(26, 0, buf, out_buff);
+  tx_buffer.push(new Record(out_buff));
 
+  if (current_hh != t.hour) {
+    current_hh = t.hour;
+    if (current_hh % 2 == 0) {
+      mp3.playFolder(2, 1);
+    } else {
+      mp3.playFolder(2, 2);
+    }
+  }
+
+
+  sprintf(buf, "%d", rx1_data.i);
+  MakeNextionCommand(44, 2, buf, out_buff);
+  tx_buffer.push(new Record(out_buff));
+
+  sprintf(buf, "%d", rx1_data.p);
+  MakeNextionCommand(45, 2, buf, out_buff);
+  tx_buffer.push(new Record(out_buff));
+
+  sprintf(buf, "%d", rx1_data.v);
+  MakeNextionCommand(27, 2, buf, out_buff);
+  tx_buffer.push(new Record(out_buff));
+
+  //
+  sprintf_P(buf, topStr, rx1_data.t0 / 10, abs(rx1_data.t0 % 10), char(176));
+  MakeNextionCommand(33, 0, buf, out_buff);
+  tx_buffer.push(new Record(out_buff));
+
+  sprintf_P(buf, topHStr, rx1_data.h0, char(37));
+  MakeNextionCommand(35, 0, buf, out_buff);
+  tx_buffer.push(new Record(out_buff));
+
+
+  sprintf_P(buf, topStr, rx1_data.t1 / 10, abs(rx1_data.t1 % 10), char(176));
+  MakeNextionCommand(32, 0, buf, out_buff);
+  tx_buffer.push(new Record(out_buff));
+
+
+  sprintf_P(buf, topHStr, rx1_data.h1,  char(37));
+  MakeNextionCommand(34, 0, buf, out_buff);
+  tx_buffer.push(new Record(out_buff));
+
+  sprintf_P(buf, topStr, rx1_data.t2 / 10, abs(rx1_data.t2 % 10), char(176));
+  MakeNextionCommand(36, 0, buf, out_buff);
+  tx_buffer.push(new Record(out_buff));
+
+  sprintf_P(buf, topHStr, rx1_data.h2,  char(37));
+  MakeNextionCommand(41, 0, buf, out_buff);
+  tx_buffer.push(new Record(out_buff));
+  //
+  //
+  if (currentPage == 0 || currentPage == 5) {
+    //collect ventilation ducts temperature
+    sprintf_P(buf, topStr, rx2_data.t0 / 10, abs(rx2_data.t0 % 10), char(176));
+    MakeNextionCommand(0, 0, buf, out_buff);
+    tx_buffer.push(new Record(out_buff));
+
+    sprintf_P(buf, topStr, rx2_data.t1 / 10, abs(rx2_data.t1 % 10), char(176));
+    MakeNextionCommand(1, 0, buf, out_buff);
+    tx_buffer.push(new Record(out_buff));
+
+    sprintf_P(buf, topStr, rx2_data.t2 / 10, abs(rx2_data.t2 % 10), char(176));
+    MakeNextionCommand(2, 0, buf, out_buff);
+    tx_buffer.push(new Record(out_buff));
+
+    sprintf_P(buf, topStr, rx2_data.t3 / 10, abs(rx2_data.t3 % 10), char(176));
+    MakeNextionCommand(3, 0, buf, out_buff);
+    tx_buffer.push(new Record(out_buff));
+  }
+
+
+
+  sprintf_P(buf, topStr, rx2_data.t4 / 10, abs(rx2_data.t4 % 10), char(176));
+  MakeNextionCommand(4, 0, buf, out_buff);
+  tx_buffer.push(new Record(out_buff));
+
+  sprintf_P(buf, topStr, rx2_data.t5 / 10, abs(rx2_data.t5 % 10), char(176));
+  MakeNextionCommand(5, 0, buf, out_buff);
+  tx_buffer.push(new Record(out_buff));
+
+  sprintf_P(buf, topStr, rx2_data.t6 / 10, abs(rx2_data.t6 % 10), char(176));
+  MakeNextionCommand(6, 0, buf, out_buff);
+  tx_buffer.push(new Record(out_buff));
+
+
+  if (eday == 0) {
+    eday = rx2_data.e;
+  }
+
+  sprintf(buf, "%d", rx2_data.p);
+  MakeNextionCommand(28, 2, buf, out_buff);
+  tx_buffer.push(new Record(out_buff));
+
+  if (rx2_data.e > 0) {
+
+    uint32_t  uw = (rx2_data.e - eday);
+    int kw = (estart + rx2_data.e) / 1000;
+
+    sprintf(buf, "%d", kw);
+    MakeNextionCommand(29, 2, buf, out_buff);
+    tx_buffer.push(new Record(out_buff));
+
+    sprintf(buf, "%ld", uw);
+    MakeNextionCommand(30, 2, buf, out_buff);
+    tx_buffer.push(new Record(out_buff));
+  }
+
+  //BME280
+  int hp = rx2_data.hp / 100;
+  int mmr = rx2_data.hp / 133.322368421;
+
+  sprintf(buf, "%d", hp);
+  MakeNextionCommand(46, 0, buf, out_buff);
+  tx_buffer.push(new Record(out_buff));
+
+  sprintf(buf, "%d", mmr );
+  MakeNextionCommand(47, 0, buf, out_buff);
+  tx_buffer.push(new Record(out_buff));
+
+  sprintf_P(buf, topStr, rx2_data.t7 / 10, abs(rx2_data.t7 % 10), char(176));
+  MakeNextionCommand(49, 0, buf, out_buff);
+  tx_buffer.push(new Record(out_buff));
+  // bathroom hymidity
+  sprintf_P(buf, topHStr, rx2_data.h0, char(37));
+  MakeNextionCommand(48, 0, buf, out_buff);
+  tx_buffer.push(new Record(out_buff));
+
+  //MHA-Z14A co2 meter
+  sprintf(buf, "%d", rx3_data.r);
+  MakeNextionCommand(50, 0, buf, out_buff);
+  tx_buffer.push(new Record(out_buff));
+
+  while (!tx_buffer.isEmpty()) {
+    Record* record = tx_buffer.shift();
+
+    char * bufa = record->cmd_name;
+    size_t buf_len = strlen(bufa) * sizeof(char);
+    webSocket.sendBIN( (uint8_t *)bufa, buf_len);
+
+    record->print();
+    delete record;
+  }
+
+}
+
+void manageCommand(const char* payload) {
+
+  DynamicJsonDocument doc(440);
+  deserializeJson(doc, payload);
+
+  const char* cmd = doc["cmd"]; // "F"
+  char buf[10];
+  char out_buff[250];
+
+  if (String(cmd) == "F") {
+    int i = doc["i"]; // 7
+    const char* fi = doc["fi"]; //
+    const char* sr = doc["sr"]; // "07:55"
+    const char* ss = doc["ss"]; // "16:04"
+    const char* mr = doc["mr"]; // "17:12"
+    const char* ms = doc["ms"]; // "09:50"
+    const char* uv = doc["uv"]; // "0"
+    const char* ws = doc["ws"]; // "14.8"
+    const char* wd = doc["wd"]; // "Пд-Сх"
+    const char* tl = doc["tl"]; // "4"
+    const char* th = doc["th"]; // "7.4"
+    const char* tc = doc["tc"]; // "6.2"
+
+
+
+    utf8ToByte_CStr(fi);
+    MakeNextionCommand(8, 0, fi, out_buff);
+    forecast_tx_buffer.push(new Record(out_buff));
+
+    MakeNextionCommand(9, 0, sr, out_buff);
+    forecast_tx_buffer.push(new Record(out_buff));
+
+    MakeNextionCommand(10, 0, ss, out_buff);
+    forecast_tx_buffer.push(new Record(out_buff));
+
+    MakeNextionCommand(11, 0, mr, out_buff);
+    forecast_tx_buffer.push(new Record(out_buff));
+
+    MakeNextionCommand(12, 0, ms, out_buff);
+    forecast_tx_buffer.push(new Record(out_buff));
+
+    MakeNextionCommand(13, 0, uv, out_buff);
+    forecast_tx_buffer.push(new Record(out_buff));
+
+    MakeNextionCommand(14, 0, ws, out_buff);
+    forecast_tx_buffer.push(new Record(out_buff));
+
+    utf8ToByte_CStr(wd);
+    MakeNextionCommand(15, 0, wd, out_buff);
+    forecast_tx_buffer.push(new Record(out_buff));
+
+    MakeNextionCommand(16, 0, tl, out_buff);
+    forecast_tx_buffer.push(new Record(out_buff));
+
+    MakeNextionCommand(17, 0, th, out_buff);
+    forecast_tx_buffer.push(new Record(out_buff));
+
+    MakeNextionCommand(18, 0, tc, out_buff);
+    forecast_tx_buffer.push(new Record(out_buff));
+
+    sprintf(buf, "%d", i);
+    MakeNextionCommand(19, 1, buf, out_buff);
+    forecast_tx_buffer.push(new Record(out_buff));
+
+    if (tx_buffer.isEmpty()) {
+      sendForecast();
+    }
+  } else if (String(cmd) == "T") {
+    //
+    const char* now = doc["t"];
+    //struct ts t;
+    t.sec = inp2toi(now, 1);
+    t.min = inp2toi(now, 3);
+    t.hour = inp2toi(now, 5);
+    t.wday = now[7] - 48;
+    t.mday = inp2toi(now, 8);
+    t.mon = inp2toi(now, 10);
+    t.year = inp2toi(now, 12) * 100 + inp2toi(now, 14);
+    //DS3231_set(t);
+
+  } else if (String(cmd) == "U") {
+
+    int s = doc["s"]; // 2
+    int av = doc["av"]; // 1738
+    int l = doc["l"]; // 0
+    int c = doc["c"]; // 1000
+    int r = doc["r"]; // 111
+    int dc = doc["dc"]; // 135
+    int e = doc["e"]; // 65
+    long on = doc["on"]; // 1639916175
+    long off = doc["off"]; // 1639916286
+    int tb = doc["tb"]; // 0
+    int ob = doc["ob"]; // 4889
+
+
+    sprintf(buf, "%d", dc);
+    MakeNextionCommand(7, 2, buf, out_buff);
+    tx_buffer.push(new Record(out_buff));
+
+    sprintf(buf, "%d", r);
+    MakeNextionCommand(42, 2, buf, out_buff);
+    tx_buffer.push(new Record(out_buff));
+
+    sprintf(buf, "%d", c);
+    MakeNextionCommand(43, 2, buf, out_buff);
+    tx_buffer.push(new Record(out_buff));
+
+
+    while (!tx_buffer.isEmpty()) {
+      Record* record = tx_buffer.shift();
+      record->print();
+      delete record;
     }
 
   }
 
+}
+
+void sendForecast() {
+  while (!forecast_tx_buffer.isEmpty()) {
+    Record* record = forecast_tx_buffer.shift();
+    record->print();
+    delete record;
+  }
+  mp3.playFolder(2, 5);
+}
+
+void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
+  switch (type) {
+    case WStype_DISCONNECTED:
+      Serial.println("[WSc] Disconnected!\n");
+      break;
+    case WStype_CONNECTED:
+      {
+        Serial.print("[WSc] Connected to url: ");
+        Serial.println((char *)payload);
+      }
+      break;
+    case WStype_TEXT:
+      // Serial.print("[WSc] get text: ");
+      // Serial.println((char *)payload);
+      manageCommand((const char*) payload);
+      break;
+    case WStype_BIN:
+      break;
+  }
 
 }
 
+
+
+void serialEvent2() {
+  while (Serial2.available() > 0) {
+    char c = Serial2.read();
+    if (c == 0x65)    {
+      delay(10);
+      if (Serial2.available() >= 6) {
+        static uint8_t buffer[8];
+        buffer[0] = c;
+        uint8_t i;
+        for (i = 1; i < 7; i++)
+          buffer[i] = Serial2.read();
+        buffer[i] = 0x00;
+        if (buffer[4] == 0xFF && buffer[5] == 0xFF && buffer[6] == 0xFF) {
+          Serial.print(">>>>buffer: ");
+          Serial.println( buffer[2]);
+          if (buffer[2] == 0x33) {
+            webSocket.sendTXT("{\"cmd\":\"F\"}");
+          }
+
+        }
+      }
+    } else if (c == 0x23) {
+      // Variable arrived
+      String str = Serial2.readStringUntil(';');
+      handleVariable(str);
+    }
+  }
+
+}
+void handleVariable(String str) {
+  Serial.print("Master buffer: ");
+  Serial.println(str);
+  char v = str.charAt(0);
+
+  str.remove(0, 1);
+  Serial.println(str);
+  uint32_t num = str.toInt();
+  Serial.println(num);
+  Serial.print("V:");
+  Serial.println(v);
+
+  tx_data.c = 0xC1;
+
+  if (v == 0x56) {
+    //Ventelation
+    vent_mask = num;
+    checkVentelationScheduler();
+
+  } else if (v == 0x41) {
+    // Alarm
+
+  } else if (v == 0x48) {
+    // Heating
+    heat_mask = num;
+    checkVentelationScheduler();
+  }
+
+
+
+
+}
+void checkVentelationScheduler() {
+  char buf[120];
+
+  int fan_speed = ((1 << 2) - 1) & (vent_mask >> 24);
+  int is_auto  = bitRead(vent_mask, 26);
+
+  tx_data.r = heat_mask;
+  tx_data.s = 0;
+  tx_data.c = 0xC1;
+
+  int duration =  ((1 << 3) - 1) & (vent_mask >> 27);
+  int hh_checked = bitRead(vent_mask, t.hour);
+
+  if (is_auto == 1) {
+
+    if (hh_checked == 1) {
+      //int duration =  ((1 << 3) - 1) & (vent_mask >> 27);
+      if (duration == 6 || t.min < (duration * 10) ) {
+        tx_data.s = 100;
+        tx_data.r = heat_mask | 16;
+        //70 61 67 65 35 2e 74 6d 30 2e 65 6e 3d 31
+        /*
+          char b[14] = {0x70, 0x61, 0x67, 0x65, 0x35, 0x2E, 0x74, 0x6D, 0x30, 0x2E, 0x65, 0x6E, 0x3D, 0x31};
+          tx_buffer.push(new Record(b));
+
+          while (!tx_buffer.isEmpty()) {
+          Record* record = tx_buffer.shift();
+          record->print();
+          delete record;
+          }
+        */
+      }
+    }
+
+  } else {
+    // Manual mode
+    tx_data.s = speedArr[fan_speed];
+    if (fan_speed > 0) {
+      tx_data.r = heat_mask | 16;
+    }
+  }
+
+  //TX.sendData(I2C_SLAVE_ADDRESS);
+
+  //sprintf(buf, "Date %d:%d duration: %d speed: %d auto: %d check: %d", t.hour, t.min, duration, fan_speed, is_auto, hh_checked);
+  //Serial.println(buf);
+}
+void selectChannel(uint8_t i) {
+  Wire.beginTransmission(0x72);
+  Wire.write(1 << i);
+  Wire.endTransmission();
+}
+
+uint8_t inp2toi(char *cmd, const uint16_t seek) {
+  uint8_t rv;
+  rv = (cmd[seek] - 48) * 10 + cmd[seek + 1] - 48;
+  return rv;
+}
+// Text encoding ISO-8859-5 for NEXTION HMI
+static byte byte1;  // Last byte buffer
+static byte byte2;  // Second last byte buffer
 String utf8ToByte_Str(String s) {
   String r = "";
   char c;
