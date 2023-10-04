@@ -45,7 +45,7 @@ struct TX_DATA {
   int16_t t6;
   int16_t t7;
   uint8_t h0;
-  int16_t hp;
+  uint16_t hp;
   int16_t p;
   int32_t e;
 };
@@ -156,7 +156,7 @@ void loop() {
       */
 
 
-      tx_data.hp = 100467;//pressure_event.pressure *100;
+      tx_data.hp = 10046;//pressure_event.pressure *100;
       tx_data.t7 = 201;//temp_event.temperature * 10;
       tx_data.h0 = 56;//humidity_event.relative_humidity;
     }

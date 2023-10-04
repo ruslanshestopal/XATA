@@ -47,7 +47,7 @@ unsigned long prev, interval = 5000;
 float   temperature = 0;
 float   humidity    = 0;
 uint8_t userRegisterData = 0;
-int stepCount = 0;
+int stepCount = 10;
 
 void setup() {
   while (!Serial) { }

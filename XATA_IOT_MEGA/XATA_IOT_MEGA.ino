@@ -5,7 +5,7 @@
 #include <HTU21D.h>
 //#include "ds3231.h" //https://github.com/rodan/ds3231
 #include "DFRobotDFPlayerMini.h"
-#include<DigitalIO.h>
+#include <DigitalIO.h>
 #include "SPI.h"      
 #include "nRF24L01.h" 
 #include "RF24.h"     
@@ -102,6 +102,8 @@ const char* const vars_table[] PROGMEM = {
 const char topStr[] PROGMEM = "%i.%01i%c";
 const char topHStr[] PROGMEM = "%i%c";
 const char dateStr[] PROGMEM = "%02d-%02d-%d";
+const char startStr[] PROGMEM = "{\"cmd\":\"E\",\"val\":%ld}";
+
 
 struct TX_DATA {
   uint8_t c;
@@ -133,7 +135,7 @@ struct RX2_DATA {
   int16_t t6;
   int16_t t7;
   uint8_t h0;
-  int16_t hp;
+  uint16_t hp;
   int16_t p;
   int32_t e;
 };
@@ -153,7 +155,7 @@ RX3_DATA rx3_data;
 #define I2C_SLAVE_ADDRESS 9
 
 unsigned long prev, interval = 5000;
-uint32_t estart = 22168227; //133 579 77 22.01.2022 21:15 22534
+uint32_t estart = 22608500;// 30 May 20023
 
 uint32_t eday = 0;
 
@@ -171,6 +173,7 @@ uint8_t current_weekday = 0;
 uint32_t vent_mask = 0;
 uint32_t heat_mask = 0;
 uint32_t alarm_mask = 0;
+uint8_t rx_mask = 0;
 
 uint8_t currentPage = 0;
 
@@ -275,6 +278,7 @@ void setup() {
   radio.openReadingPipe(3, 0xF0F1F2F3F6LL);
   radio.openWritingPipe(0xFEDCBA9876LL);
   radio.startListening();
+  
 }
 void setupDefaults() {
   //Reset Nextion HMI upon Arduino reload
@@ -339,7 +343,7 @@ void MakeNextionCommand(uint8_t index, uint8_t type,  char * payload,  char *out
 
 void loop() {
 
-  //webSocket.loop();
+  webSocket.loop();
   uint8_t pipe;
 
   if (radio.available(&pipe)) {
@@ -355,10 +359,12 @@ void loop() {
         break;
       case 2:
         radio.read(&rx2_data, sizeof(rx2_data));
-        sprintf(buf, ">>RX2: T0=%d T1=%d T2=%d  T3=%d T4=%d T5=%d T6=%d   |  P=%d E=%ld",
+        sprintf(buf, ">>RX2: T0=%d T1=%d T2=%d  T3=%d T4=%d T5=%d T6=%d   |  P=%d E=%ld  | H0=%d Pa=%d",
                 rx2_data.t0, rx2_data.t1, rx2_data.t2,
                 rx2_data.t3, rx2_data.t4, rx2_data.t5,
-                rx2_data.t6, rx2_data.p, rx2_data.e);
+                rx2_data.t6, rx2_data.p, rx2_data.e,
+                rx2_data.h0, rx2_data.hp
+                );
         Serial.println(buf);
         break;
       case 3:
@@ -385,11 +391,12 @@ void loop() {
       sendForecast();
     }
 
+/*
     tx_data.c = 0xC0;
     radio.stopListening();
     radio.write(&tx_data, sizeof(tx_data));
     radio.startListening();
-
+*/
     makeAndSendToNEXTION();
 
     prev = now;
@@ -549,6 +556,10 @@ void makeAndSendToNEXTION() {
   tx_buffer.push(new Record(out_buff));
 
   if (rx2_data.e > 0) {
+
+    sprintf_P(buf, startStr, rx2_data.e);
+    
+    webSocket.sendTXT(buf);
 
     uint32_t  uw = (rx2_data.e - eday);
     int kw = (estart + rx2_data.e) / 1000;
@@ -714,6 +725,12 @@ void manageCommand(const char* payload) {
       delete record;
     }
 
+  } else if (String(cmd) == "E") {
+
+     uint32_t val = doc["val"]; 
+     estart = val;
+    Serial.println("New eStart");
+    Serial.println(estart);
   }
 
 }
@@ -739,8 +756,8 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
       }
       break;
     case WStype_TEXT:
-      // Serial.print("[WSc] get text: ");
-      // Serial.println((char *)payload);
+      Serial.print("[WSc] get text: ");
+      Serial.println((char *)payload);
       manageCommand((const char*) payload);
       break;
     case WStype_BIN:
@@ -748,9 +765,6 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
   }
 
 }
-
-
-
 void serialEvent2() {
   while (Serial2.available() > 0) {
     char c = Serial2.read();
